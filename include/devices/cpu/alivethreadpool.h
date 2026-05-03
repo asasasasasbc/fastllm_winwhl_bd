@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 #if defined(_WIN32) || defined(_WIN64)
-#include <Windows.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif

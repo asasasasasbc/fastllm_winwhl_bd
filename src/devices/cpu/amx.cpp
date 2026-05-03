@@ -39,13 +39,15 @@ typedef struct __tile_config {
 #define ARCH_REQ_XCOMP_PERM     0x1023
 #define XFEATURE_XTILECFG       17
 #define XFEATURE_XTILEDATA      18
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <sys/syscall.h>
+#endif
 
 namespace fastllm {
     extern void AddBiasAVX512(float *outputData, float *biasData, int n, int k, int st, int end);
 
     void InitAMX() {
-#if defined(__AMX_TILE__)
+#if defined(__AMX_TILE__) && !defined(_WIN32) && !defined(_WIN64)
         if (syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA) != 0) {
             printf("init amx failed.\n");
             exit(0);

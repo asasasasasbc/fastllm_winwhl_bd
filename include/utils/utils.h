@@ -26,7 +26,7 @@
 #endif
 
 #if defined(_WIN32) or defined(_WIN64)
-#include <Windows.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
