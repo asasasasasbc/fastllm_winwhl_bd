@@ -2,6 +2,13 @@
 // Created by huangyuyang on 8/2/24.
 //
 
+#ifdef _WIN32
+#include <string.h>
+#ifndef strcasecmp
+#define strcasecmp _stricmp
+#endif
+#endif
+
 #include "devices/cpu/cpudevice.h"
 #include "devices/cuda/cudadevice.h"
 #include "devices/cuda/fastllm-cuda.cuh"

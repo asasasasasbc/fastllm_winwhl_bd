@@ -21,6 +21,10 @@
 
 #include <cstdint>
 
+#ifdef _MSC_VER
+typedef unsigned short ushort;
+#endif
+
 namespace flashinfer {
 namespace math {
 

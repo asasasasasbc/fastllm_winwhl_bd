@@ -9,6 +9,7 @@
 #include <cstring>
 #include <thread>
 #include <chrono>
+#include <sstream>
 
 #include <cfloat>
 #include <cmath>
@@ -1846,7 +1847,7 @@ namespace fastllm {
         
         // 为每个线程分配任务状态
         for (int i = 0; i < numThreads; i++) {
-            taskStates[i] = new (std::align_val_t{64}) TaskState();
+            taskStates[i] = new TaskState();
             taskStates[i]->curr.store(0, std::memory_order_relaxed);
             taskStates[i]->end = 0;
             taskStates[i]->completed.store(false, std::memory_order_relaxed);
@@ -1899,12 +1900,7 @@ namespace fastllm {
         for (int i = 0; i < numThreads; i++) {
             delete wsOps[i];
             if (taskStates[i] != nullptr) {
-                taskStates[i]->~TaskState();
-                #if __cpp_aligned_new >= 201606
-                    operator delete(taskStates[i], std::align_val_t{64});
-                #else
-                    free_aligned(taskStates[i], sizeof(TaskState));
-                #endif
+                delete taskStates[i];
             }
         }
         

@@ -70,7 +70,6 @@ setup (
         'jinja2>=3.1.0',
         'nvidia-cuda-runtime-cu12',
         'nvidia-cublas-cu12',
-        'nvidia-nccl-cu12'
     ] + all_require,
     extras_require={
         'all': all_require,

@@ -475,7 +475,7 @@ __device__ __forceinline__ void write_o(typename KTraits::SharedStorage* smem_st
     uint32_t o_smem_offset_w = get_swizzle_offset<KTraits::SWIZZLE_MODE_O, UPCAST_STRIDE_FINAL_O>(
         warp_idx_in_wg * 16 + lane_idx % 16,
         warp_group_idx * NUM_MMA_D_CKV + k * 2 + lane_idx / 16);
-    o_smem.template stmatrix_m8n8x4(o_smem_offset_w, o_frag_f16);
+    o_smem.stmatrix_m8n8x4(o_smem_offset_w, o_frag_f16);
   }
 
   if (partial_o != nullptr) {
@@ -495,7 +495,7 @@ __device__ __forceinline__ void write_o(typename KTraits::SharedStorage* smem_st
 #pragma unroll
       for (uint32_t k = 0; k < HEAD_DIM_CKV / 128; ++k) {
         if (q_idx < q_len) {
-          o_smem.template store_128b(o_smem_offset_w, o_partial_ptr);
+          o_smem.template store_128b<DTypeO>(o_smem_offset_w, o_partial_ptr);
         }
         o_partial_ptr += 8 * upcast_size<DTypeO>();
         o_smem_offset_w += 64;
@@ -529,7 +529,7 @@ __device__ __forceinline__ void write_o(typename KTraits::SharedStorage* smem_st
 #pragma unroll
       for (uint32_t k = 0; k < HEAD_DIM_CKV / 128; ++k) {
         if (q < q_len) {
-          o_smem.template store_128b(o_smem_offset_w, o_final_ptr);
+          o_smem.template store_128b<DTypeO>(o_smem_offset_w, o_final_ptr);
         }
         o_final_ptr += 8 * upcast_size<DTypeO>();
         o_smem_offset_w += 64;

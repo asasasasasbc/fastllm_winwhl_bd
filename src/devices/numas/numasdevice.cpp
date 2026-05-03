@@ -2,8 +2,10 @@
 // Created by huangyuyang on 10/15/24.
 //
 
+#ifndef _WIN32
 #include <sys/mman.h>
 #include <fcntl.h>
+#endif
 
 #include "devices/numas/numasdevice.h"
 #include "devices/cpu/cpudevice.h"

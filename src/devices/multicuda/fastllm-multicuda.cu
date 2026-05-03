@@ -22,7 +22,11 @@
 #include "devices/cpu/computeutils.h"
 
 #include <cuda_runtime.h>
+#ifdef _WIN32
+#include "../../third_party/nccl_stub/nccl.h"
+#else
 #include <nccl.h>
+#endif
 
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700 // support tensor core
 #include "mma.h"

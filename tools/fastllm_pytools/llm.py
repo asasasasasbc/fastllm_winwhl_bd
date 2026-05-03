@@ -98,7 +98,7 @@ def _discover_nvidia_lib_dirs() -> List[str]:
             if os.path.isdir(libdir):
                 dirs.append(libdir)
     # 3) Fallback: locate by installed distributions metadata
-    for dist_name in ["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12", "nvidia-nccl-cu12"]:
+    for dist_name in ["nvidia-cuda-runtime-cu12", "nvidia-cublas-cu12"]:
         try:
             dist = importlib_metadata.distribution(dist_name)
             dist_root = str(dist.locate_file(""))
@@ -235,7 +235,7 @@ else:
             #     for err in failed_libs[:10]:
             #         print("   *", err)
             print("If CUDA/NCCL runtime is missing, try:")
-            print("pip install -U nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-nccl-cu12")
+            print("pip install -U nvidia-cuda-runtime-cu12 nvidia-cublas-cu12")
         print("Load fastllm failed. (Try update glibc)")
         exit(0)
 

@@ -145,7 +145,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread --std=c++17 -O2")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     string(REPLACE "/Ob2" "/Ob1 /Gy" CMAKE_CXX_FLAGS_RELEASE ${CMAKE_CXX_FLAGS_RELEASE})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNOMINMAX /std:c++17 /arch:AVX2 /source-charset:utf-8")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNOMINMAX /std:c++20 /arch:AVX2 /source-charset:utf-8")
     if (CXX_MAJOR_VERSION GREATER_EQUAL 19 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
         set_source_files_properties(
             "src/devices/cpu/avx512f.cpp"
@@ -249,6 +249,9 @@ if (USE_CUDA)
     endif()
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
     add_compile_definitions(USE_CUDA)
+    if (WIN32)
+        add_compile_definitions(_USE_MATH_DEFINES)
+    endif()
     if (CUDA_NO_TENSOR_CORE)
         add_compile_definitions(CUDA_NO_TENSOR_CORE)
     endif()
@@ -274,7 +277,11 @@ if (USE_CUDA)
     include_directories(include/devices/multicuda)
     set(FASTLLM_CUDA_SOURCES ${FASTLLM_CUDA_SOURCES} src/devices/multicuda/multicudadevice.cpp src/devices/multicuda/fastllm-multicuda.cu)
 
-    set(FASTLLM_LINKED_LIBS ${FASTLLM_LINKED_LIBS} cublas nccl)
+    if (WIN32)
+        set(FASTLLM_LINKED_LIBS ${FASTLLM_LINKED_LIBS} cublas)
+    else()
+        set(FASTLLM_LINKED_LIBS ${FASTLLM_LINKED_LIBS} cublas nccl)
+    endif()
     set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH})
 endif()
 
@@ -443,6 +450,7 @@ if (BUILD_CLI)
 endif()
 
 add_library(fastllm_tools SHARED ${FASTLLM_CXX_SOURCES} ${FASTLLM_CUDA_SOURCES} ${FASTLLM_TFACC_SOURCES} ${FASTLLM_TOPS_SOURCES} tools/src/pytools.cpp)
+set_source_files_properties(third_party/gguf/gguf.cpp PROPERTIES CXX_STANDARD 20)
 target_link_libraries(fastllm_tools PUBLIC ${FASTLLM_LINKED_LIBS})
 
 set(BUILD_INFO_USE_CUDA "false")
@@ -484,8 +492,7 @@ if (${CMAKE_HOST_WIN32})
             COMMAND ${CMAKE_COMMAND} -E make_directory tools/ftllm
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/tools/fastllm_pytools ${CMAKE_BINARY_DIR}/tools/ftllm/.
             COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/tools/scripts ${CMAKE_BINARY_DIR}/tools/.
-            COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/$(Configuration)/fastllm_tools.dll ${CMAKE_BINARY_DIR}/tools/ftllm/.
-            COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_BINARY_DIR}/$(Configuration)/fastllm_tools.dll
+            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:fastllm_tools> ${CMAKE_BINARY_DIR}/tools/ftllm/.
             COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/build_info.json ${CMAKE_BINARY_DIR}/tools/ftllm/.
     )
 else()
