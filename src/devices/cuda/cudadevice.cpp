@@ -5,6 +5,8 @@
 #include "devices/cpu/cpudevice.h"
 #include "devices/cuda/cudadevice.h"
 
+#include <sstream>
+
 #include "fastllm-cuda.cuh"
 
 #include "utils.h"

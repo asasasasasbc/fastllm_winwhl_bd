@@ -1,0 +1,2 @@
+[console_scripts]
+fastllm-convert = fastllm.convert:main

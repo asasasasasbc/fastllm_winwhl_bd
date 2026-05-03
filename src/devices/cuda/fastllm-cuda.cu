@@ -10,10 +10,15 @@
 #include "utils/utils.h"
 
 #include <cstdlib>
+#include <algorithm>
+#include <cmath>
 #include <random>
 #include <type_traits>
+#include <vector>
 #include <cuda_fp8.h>
+#ifndef FASTLLM_DISABLE_FLASHINFER
 #include "sampling.cuh"
+#endif
 
 void showError(cudaError_t result, char const* const message, const char* const file,
            int const line) {
@@ -4875,6 +4880,7 @@ bool FastllmCudaRepeatPenalty (fastllm::Data &input, fastllm::Data &penalty, fas
     return true;
 }
 
+#ifndef FASTLLM_DISABLE_FLASHINFER
 template <int BLOCK_THREADS>
 __global__ void FastllmTemperatureSoftmaxKernel(float *logits, float *probs, float *temperatures, int vocabSize) {
     int bid = blockIdx.x;
@@ -4911,11 +4917,68 @@ __global__ void FastllmTemperatureSoftmaxKernel(float *logits, float *probs, flo
         output[i] = expf(input[i] * invTemp - maxVal) * invSum;
     }
 }
+#endif
 
 bool FastllmCudaTopKTopPSampling(float *logits, float *temperatures,
                                   int *topKArr, float *topPArr,
                                   int *output,
                                   int batch, int vocabSize) {
+#ifdef FASTLLM_DISABLE_FLASHINFER
+    std::vector<float> hostLogits((size_t)batch * vocabSize);
+    FastllmCudaCopyFromDeviceToHost(hostLogits.data(), logits, (size_t)batch * vocabSize * sizeof(float));
+    DeviceSync();
+
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    for (int b = 0; b < batch; b++) {
+        float *base = hostLogits.data() + (size_t)b * vocabSize;
+        float temperature = temperatures[b] > 1e-6f ? temperatures[b] : 1.0f;
+        int topk = std::max(1, std::min(vocabSize, topKArr[b] > 0 ? topKArr[b] : vocabSize));
+        float topp = topPArr[b] > 0.0f ? topPArr[b] : 1.0f;
+
+        std::vector<std::pair<float, int>> ranked;
+        ranked.reserve(vocabSize);
+        for (int i = 0; i < vocabSize; i++) {
+            ranked.push_back(std::make_pair(-base[i] / temperature, i));
+        }
+        std::partial_sort(ranked.begin(), ranked.begin() + topk, ranked.end());
+
+        float maxValue = -ranked[0].first;
+        std::vector<float> probs;
+        probs.reserve(topk);
+        float psum = 0.0f;
+        for (int i = 0; i < topk; i++) {
+            float p = expf(-ranked[i].first - maxValue);
+            probs.push_back(p);
+            psum += p;
+        }
+
+        float curSum = 0.0f;
+        int limitedTopK = topk;
+        for (int i = 0; i < topk; i++) {
+            probs[i] /= psum;
+            curSum += probs[i];
+            if (curSum > topp) {
+                limitedTopK = i + 1;
+                break;
+            }
+        }
+
+        float rnd = dist(rng) * curSum;
+        curSum = 0.0f;
+        output[b] = ranked[limitedTopK - 1].second;
+        for (int i = 0; i < limitedTopK; i++) {
+            curSum += probs[i];
+            if (curSum > rnd || i == limitedTopK - 1) {
+                output[b] = ranked[i].second;
+                break;
+            }
+        }
+    }
+
+    return true;
+#else
     float *cudaProbs = (float *)FastllmCudaMalloc((long long)batch * vocabSize * sizeof(float));
 
     // temperatures (float * batch) | topKArr (int * batch) | topPArr (float * batch) | output (int * batch)
@@ -4950,6 +5013,7 @@ bool FastllmCudaTopKTopPSampling(float *logits, float *temperatures,
     FastllmCudaFree(cudaProbs);
     FastllmCudaFree(cudaParamBuf);
     return true;
+#endif
 }
 
 bool FastllmCudaSplitBatch(fastllm::Data &input, fastllm::Data **outputs, int axis) {
@@ -5379,40 +5443,40 @@ void FastllmCudaSetDevice(int gpu_id) {
 }
 
 int FastllmCudaGetDevice() {
-    int id = -1;
-    cudaGetDevice(&id);
-    return id;
-}
+    int bid = blockIdx.x;
+    float invTemp = 1.0f / temperatures[bid];
+    float *input = logits + (long long)bid * vocabSize;
+    float *output = probs + (long long)bid * vocabSize;
 
-int GetPointerDeviceId(void *ptr) {
-    cudaPointerAttributes attributes;
-    cudaError_t err = cudaPointerGetAttributes(&attributes, ptr);
+    __shared__ float sMaxVal;
+    __shared__ float sSumExp;
 
-    if (err == cudaSuccess) {
-#if (CUDART_VERSION < 10000) && !(defined(USE_ROCM))
-        if (attributes.memoryType == cudaMemoryTypeDevice) {
-#else
-        if (attributes.type == cudaMemoryTypeDevice) {
-#endif
-            int device = attributes.device;
-            // printf("Pointer belongs to device %d\n", device);
-            return device;
-        } else {
-            printf("Pointer is not device memory\n");
-            return -1;
-        }
-    } else {
-        printf("Error: %s\n", cudaGetErrorString(err));
-        return -1;
+    float localMax = -1e30f;
+    for (int i = threadIdx.x; i < vocabSize; i += BLOCK_THREADS) {
+        localMax = fmaxf(localMax, input[i] * invTemp);
     }
-}
+    typedef cub::BlockReduce<float, BLOCK_THREADS> BlockReduce;
+    __shared__ typename BlockReduce::TempStorage tempStorage;
+    float blockMax = BlockReduce(tempStorage).Reduce(localMax, MaxReduceOp{});
+    if (threadIdx.x == 0) sMaxVal = blockMax;
+    __syncthreads();
+    float maxVal = sMaxVal;
 
-int FastllmCudaGetDeviceCount() {
-    int deviceCount = 0;
-    cudaError_t error = cudaGetDeviceCount(&deviceCount);
-    return deviceCount;
-}
+    float localSum = 0.0f;
+    for (int i = threadIdx.x; i < vocabSize; i += BLOCK_THREADS) {
+        localSum += expf(input[i] * invTemp - maxVal);
+    }
+    __syncthreads();
 
+    __shared__ typename BlockReduce::TempStorage tempStorage2;
+    float blockSum = BlockReduce(tempStorage2).Sum(localSum);
+    if (threadIdx.x == 0) sSumExp = blockSum;
+    __syncthreads();
+    float invSum = 1.0f / sSumExp;
+
+    for (int i = threadIdx.x; i < vocabSize; i += BLOCK_THREADS) {
+        output[i] = expf(input[i] * invTemp - maxVal) * invSum;
+    }
 __global__ void FastllmCudaResetLogitsOfEOS(int batch, int stride, float *logits, int *res_lens, int *eos_nums, int *eos_ids) {
     int base = 0;
     for (int b = 0; b < batch; b++) {

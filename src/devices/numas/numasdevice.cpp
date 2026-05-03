@@ -755,7 +755,8 @@ namespace fastllm {
         
         // 为每个线程分配任务状态
         for (int i = 0; i < numaConfig->threads; i++) {
-            taskStates[i] = new (std::align_val_t{64}) TaskState();
+            void *taskStateStorage = ::operator new(sizeof(TaskState), std::align_val_t{64});
+            taskStates[i] = new (taskStateStorage) TaskState();
             taskStates[i]->curr.store(0, std::memory_order_relaxed);
             taskStates[i]->end = 0;
             taskStates[i]->completed.store(false, std::memory_order_relaxed);

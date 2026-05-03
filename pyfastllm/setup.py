@@ -2,6 +2,7 @@
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -62,7 +63,16 @@ class CMakeBuild(build_ext):
         # Adding CMake arguments set as environment variable
         # (needed e.g. to build for ARM OSx on conda-forge)
         if "CMAKE_ARGS" in os.environ:
-            cmake_args += [item for item in os.environ["CMAKE_ARGS"].split(" ") if item]
+            cmake_args += shlex.split(os.environ["CMAKE_ARGS"], posix=os.name != "nt")
+
+        if cmake_generator:
+            cmake_args += ["-G", cmake_generator]
+
+        if os.environ.get("CUDACXX"):
+            cmake_args += [f"-DCMAKE_CUDA_COMPILER:FILEPATH={os.environ['CUDACXX']}"]
+
+        if os.environ.get("CMAKE_MAKE_PROGRAM"):
+            cmake_args += [f"-DCMAKE_MAKE_PROGRAM:FILEPATH={os.environ['CMAKE_MAKE_PROGRAM']}"]
 
         if self.compiler.compiler_type != "msvc":
             # Using Ninja-build since it a) is available as a wheel and b)
@@ -140,7 +150,7 @@ setup(
     maintainer_email='',
     url='',
     long_description='',
-    ext_modules=[CMakeExtension(name="pyfasltllm", sourcedir="..")],
+    ext_modules=[CMakeExtension(name="pyfastllm", sourcedir="..")],
     cmdclass={"build_ext": CMakeBuild},
     packages = find_packages(), 
     setup_requires=[""],

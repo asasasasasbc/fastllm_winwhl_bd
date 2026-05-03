@@ -2,11 +2,21 @@ cmake_minimum_required(VERSION 3.5)
 
 project(fastllm LANGUAGES CXX)
 
+if (WIN32)
+    set(FASTLLM_DEFAULT_USE_MULTICUDA OFF)
+    set(FASTLLM_DEFAULT_USE_FLASHINFER OFF)
+else()
+    set(FASTLLM_DEFAULT_USE_MULTICUDA ON)
+    set(FASTLLM_DEFAULT_USE_FLASHINFER ON)
+endif()
+
 option(USE_NUMAS "use numas" ON)
 
 option(USE_CUDA "use CUDA" OFF)
 option(CUDA_NO_TENSOR_CORE "Optimize for legacy CUDA GPUs which has Tensor Core." OFF)
 option(CUDA_MEM_DEBUG "Enable CUDA memory pool debug logging" OFF)
+option(USE_MULTICUDA "use multi-gpu cuda/nccl" ${FASTLLM_DEFAULT_USE_MULTICUDA})
+option(USE_FLASHINFER "use flashinfer paged attention kernels" ${FASTLLM_DEFAULT_USE_FLASHINFER})
 
 option(USE_ROCM "use ROCm" OFF)
 
@@ -200,6 +210,20 @@ else()
     endif()
 endif()
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set_source_files_properties(
+        "third_party/gguf/gguf.cpp"
+        PROPERTIES
+        COMPILE_OPTIONS "/std:c++20"
+    )
+else()
+    set_source_files_properties(
+        "third_party/gguf/gguf.cpp"
+        PROPERTIES
+        COMPILE_OPTIONS "-std=c++20"
+    )
+endif()
+
 
 message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 file(GLOB GRAPH_MODEL_FILES "src/models/graph/*.cpp")
@@ -260,7 +284,6 @@ if (USE_CUDA)
     set(FASTLLM_CUDA_SOURCES src/devices/cuda/cudadevice.cpp src/devices/cuda/cudadevicebatch.cpp 
         src/devices/cuda/fastllm-cuda.cu 
         src/devices/cuda/fastllm-ggml-cuda.cu
-        src/devices/cuda/attention/fastllm-attention.cu
         src/devices/cuda/linear/fastllm-linear-fp32.cu
         src/devices/cuda/linear/fastllm-linear-fp16.cu
         src/devices/cuda/linear/fastllm-linear-bf16.cu
@@ -271,10 +294,21 @@ if (USE_CUDA)
         src/devices/cuda/linear/fastllm-linear-int4nozero.cu
         src/devices/cuda/models/deepseekv4-kernels.cu)
 
-    include_directories(include/devices/multicuda)
-    set(FASTLLM_CUDA_SOURCES ${FASTLLM_CUDA_SOURCES} src/devices/multicuda/multicudadevice.cpp src/devices/multicuda/fastllm-multicuda.cu)
+    if (USE_FLASHINFER)
+        set(FASTLLM_CUDA_SOURCES ${FASTLLM_CUDA_SOURCES} src/devices/cuda/attention/fastllm-attention.cu)
+    else()
+        set(FASTLLM_CUDA_SOURCES ${FASTLLM_CUDA_SOURCES} src/devices/cuda/attention/fastllm-attention-stub.cpp)
+        add_compile_definitions(FASTLLM_DISABLE_FLASHINFER)
+    endif()
 
-    set(FASTLLM_LINKED_LIBS ${FASTLLM_LINKED_LIBS} cublas nccl)
+    if (USE_MULTICUDA)
+        add_compile_definitions(USE_MULTICUDA)
+        include_directories(include/devices/multicuda)
+        set(FASTLLM_CUDA_SOURCES ${FASTLLM_CUDA_SOURCES} src/devices/multicuda/multicudadevice.cpp src/devices/multicuda/fastllm-multicuda.cu)
+        set(FASTLLM_LINKED_LIBS ${FASTLLM_LINKED_LIBS} nccl)
+    endif()
+
+    set(FASTLLM_LINKED_LIBS ${FASTLLM_LINKED_LIBS} cublas)
     set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH})
 endif()
 
@@ -384,8 +418,10 @@ if (PY_API)
     set(PYBIND third_party/pybind11)
     add_subdirectory(${PYBIND})
     add_compile_definitions(PY_API)
-    
-    set(Python3_ROOT_DIR "/usr/local/python3.10.6/bin/")
+
+    if (DEFINED PYTHON_EXECUTABLE AND NOT DEFINED Python3_EXECUTABLE)
+        set(Python3_EXECUTABLE "${PYTHON_EXECUTABLE}")
+    endif()
     find_package(Python3 REQUIRED)
 
     include_directories(third_party/pybind11/include)

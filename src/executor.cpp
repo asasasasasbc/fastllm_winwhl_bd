@@ -15,8 +15,10 @@
 #ifdef USE_CUDA
 #include "devices/cuda/cudadevice.h"
 #include "devices/cuda/fastllm-cuda.cuh"
+#ifdef USE_MULTICUDA
 #include "devices/multicuda/multicudadevice.h"
 #include "devices/multicuda/fastllm-multicuda.cuh"
+#endif
 #endif
 
 #ifdef USE_TFACC
@@ -41,7 +43,9 @@ namespace fastllm {
 #ifdef USE_CUDA
         if (FastllmCudaGetDeviceCount() > 0) {
             this->devices.push_back((BaseDevice*) new CudaDevice());
+#ifdef USE_MULTICUDA
             this->devices.push_back((BaseDevice*) new MultiCudaDevice((CudaDevice*)this->devices.back()));
+#endif
         }
 #endif
 #ifdef USE_TOPS
@@ -153,12 +157,14 @@ namespace fastllm {
                 if (device->deviceType == "cuda" && device->deviceIds.size() > 0) {
                     FastllmCudaSetDevice(device->deviceIds[0]);
                 }
+#ifdef USE_MULTICUDA
                 if (device->deviceType == "multicuda" && device->deviceIds.size() > 0) {
                     FastllmMultiCudaSetDevice(device->deviceIds);
                     if (device->deviceIdsRatio.size() > 0) {
                         FastllmMultiCudaSetDeviceRatio(device->deviceIdsRatio);
                     }
                 }
+#endif
 #endif
                 bool intParamsSize = intParams.size();
                 for (auto &it: datas) {
@@ -224,12 +230,14 @@ namespace fastllm {
             if (device->deviceType == "cuda" && device->deviceIds.size() > 0) {
                 FastllmCudaSetDevice(device->deviceIds[0]);
             }
+#ifdef USE_MULTICUDA
             if (device->deviceType == "multicuda" && device->deviceIds.size() > 0) {
                 FastllmMultiCudaSetDevice(device->deviceIds);
                 if (device->deviceIdsRatio.size() > 0) {
                     FastllmMultiCudaSetDeviceRatio(device->deviceIdsRatio);
                 }
             }
+#endif
 #endif
             bool intParamsSize = intParams.size();
             for (auto &it: datas) {

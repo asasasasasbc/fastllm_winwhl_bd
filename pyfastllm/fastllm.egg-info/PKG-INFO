@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: fastllm
+Version: 0.2.0
+Summary: python api for fastllm
+Home-page: 
+Author: wildkid1024
+Author-email: wildkid1024@outlook.com
+Maintainer: 
+Maintainer-email: 
+Classifier: AI::ChatGPTAI::InfereEngine
+Classifier: LLM::ChatGLM
+Classifier: LLM::Moss
+Classifier: LLM::LLama
+Requires-Python: >=3.6
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: requires-python
+Dynamic: summary
